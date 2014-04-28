@@ -426,7 +426,13 @@ class RarBlock(object):
 		return "0x%X (%u bytes)" % (size, size)
 
 class _SrrFileNameBlock(RarBlock):
-	"""Base class for SRR blocks with a file name field"""
+	"""Base class for SRR blocks with a file name field
+	
+	The "file_name" attribute holds the original file name as stored in
+	the SRR file. Forward slashes (/) are the preferred directory
+	separator, but apparently the Net version also recognizes the
+	backward slash (\\), and there is a test case for this. File paths in
+	RAR files use backward slashes."""
 	
 	def _unpack_file_name(self):
 		'''Read in "self.file_name"'''
@@ -442,10 +448,7 @@ class _SrrFileNameBlock(RarBlock):
 		
 		Sets "self.file_name", with any directory separators
 		converted to internal format. The return value is also
-		encoded with UTF-8 and prefixed with its length.
-		
-		Paths always use forward slashes as the directory separator.
-		File paths in RAR files use backward slashes."""
+		encoded with UTF-8 and prefixed with its length."""
 		
 		if os.sep != "/" and os.sep in file_name:
 			file_name = file_name.replace(os.sep, "/")
@@ -455,6 +458,16 @@ class _SrrFileNameBlock(RarBlock):
 		
 		# the size in bytes (not the number of Unicode characters).
 		return struct.pack("<H", len(file_name)) + file_name
+	
+	def os_file_name(self):
+		"""Returns the file name converted to an OS-specific path
+		
+		The "file_name" attribute may not be directly usable,
+		especially in OSes other than Windows. Raises ValueError if
+		the file name is unsuitable for the current OS."""
+		
+		path = self.file_name.replace("\\", "/")
+		return utility.joinpath(path.split("/"))
 
 class SrrHeaderBlock(RarBlock):
 	""" Represents marker/srr volume header block.
@@ -931,6 +944,10 @@ class RarVolumeHeaderBlock(RarBlock): # 0x73
 		
 class RarPackedFileBlock(RarBlock): # 0x74
 	""" File header (File in archive)
+	
+	"file_name" attribute: File name stored in the block, using the
+		backslash (\\) as a directory separator
+	
 	HEAD_CRC        CRC of fields from HEAD_TYPE to FILEATTR   2 bytes
 	                and file name
 	HEAD_TYPE       Header type: 0x74                          1 byte
@@ -1192,6 +1209,15 @@ class RarPackedFileBlock(RarBlock): # 0x74
 		out += self.flag_format(self.flags & self.DIRECTORY) +  \
 				"LHD_WINDOW (" + self.get_dictionary() + ")\n"
 		return out
+	
+	def os_file_name(self):
+		"""Returns the file name converted to an OS-specific path
+		
+		The "file_name" attribute may not be directly usable,
+		especially in OSes other than Windows. Raises ValueError if
+		the file name is unsuitable for the current OS."""
+		
+		return utility.joinpath(self.file_name.split("\\"))
 
 class RarNewSubBlock(RarPackedFileBlock): # 0x7A
 	""" RarNewSubBlock is used for AV, CMT, RR. 

@@ -171,7 +171,7 @@ def extract_files(srr_file, out_folder, extract_paths=True, packed_name=""):
 		out_file = _opath(block, extract_paths, out_folder)
 		if not packed_name or packed_name ==  \
 			os.path.basename(packed_name) == os.path.basename(out_file) or  \
-			os.path.normpath(packed_name) == os.path.normpath(block.file_name):
+			os.path.normpath(packed_name) == block.os_file_name():
 			success = _extract(block, out_file)
 			extracted_files.append((out_file, success))
 			return success
@@ -189,8 +189,9 @@ def _opath(block, extract_paths, out_folder):
 	block: SrrStoredFileBlock
 	extract_paths: True or False
 	out_folder: all paths start here"""
-	file_name = os.path.normpath(block.file_name)  \
-				if extract_paths else os.path.basename(block.file_name)
+	file_name = block.os_file_name()
+	if not extract_paths:
+		file_name = os.path.basename(file_name)
 	return os.path.join(os.path.normpath(out_folder), file_name)
 
 def _extract(block, out_file):
@@ -240,6 +241,13 @@ def add_stored_files(srr_file, store_files, in_folder="", save_paths=False,
 				   
 	Raises ArchiveNotFoundError, DupeFileName, NotSrrFile, AttributeError
 	"""
+	
+	if not isinstance(store_files, (list, tuple)): # we need a list
+		store_files = [store_files]
+	
+	# Make it more likely to find duplicates
+	store_files = list(map(os.path.normpath, store_files))
+	
 	rr = RarReader(srr_file) # ArchiveNotFoundError
 	if rr.file_type() != RarReader.SRR:
 		raise NotSrrFile("Not an SRR file.")
@@ -247,12 +255,13 @@ def add_stored_files(srr_file, store_files, in_folder="", save_paths=False,
 	if _DEBUG: print("Checking for dupes before adding files.")
 	for block in rr.read_all():
 		if block.rawtype == BlockType.SrrStoredFile:
-			if block.file_name in store_files:
+			existing = block.os_file_name()
+			if existing in store_files:
 				msg = "There already is a file with the same name stored."
 				_fire(MsgCode.DUPE, message=msg)
 				if usenet:
 					# don't try to add dupes and keep working quietly
-					store_files.remove(block.file_name)
+					store_files.remove(existing)
 				else:
 					raise DupeFileName(msg)
 
@@ -515,7 +524,7 @@ def create_srr(srr_name, infiles, in_folder="",
 							           "compression method: %s" % rarfile)
 					else:
 						# store first RAR where we encounter the stored file
-						oso_dict.setdefault(block.file_name, rarfile)
+						oso_dict.setdefault(block.os_file_name(), rarfile)
 				elif _is_recovery(block):
 					_fire(MsgCode.RBLOCK, message="RAR Recovery Block",
 						  packed_size=block.packed_size,
@@ -722,7 +731,7 @@ def create_srr_fh(srr_name, infiles, allfiles=None,
 	#									 "method: %s", rarfile)
 					else:
 						# store first RAR where we encounter the stored file
-						oso_dict.setdefault(block.file_name, rarfile)
+						oso_dict.setdefault(block.os_file_name(), rarfile)
 				elif _is_recovery(block):
 					_fire(MsgCode.RBLOCK, message="RAR Recovery Block",
 						  packed_size=block.packed_size,
@@ -1049,7 +1058,7 @@ def reconstruct(srr_file, in_folder, out_folder, extract_paths=True, hints={},
 	"""
 	rar_name = ""
 	ofile = ""
-	source_name = ""
+	source_name = None
 	rarfs = None # RAR Volume that is being reconstructed
 	srcfs = None # File handle for the stored files
 	rebuild_recovery = False
@@ -1258,14 +1267,14 @@ def _locate_file(block, in_folder, hints, auto_locate_renamed):
 	# if file has been renamed, use renamed file name
 	src = hints.get(block.file_name)
 	if src is None:
-		src = block.file_name
+		src = block.os_file_name()
 	src = os.path.abspath(os.path.join(in_folder, src))
 	
 	if not os.path.isfile(src):
 #		_fire(MsgCode.FILE_NOT_FOUND, 
 #			  message="Could not locate data file: %s" % src)
 		if auto_locate_renamed:
-			src = _auto_locate_renamed(block.file_name, 
+			src = _auto_locate_renamed(block.os_file_name(),
 				block.unpacked_size, in_folder) or src
 		if not os.path.isfile(src):
 			raise FileNotFound("The file does not exist: %s." % src)
@@ -1377,14 +1386,12 @@ def _search(files, folder=""):
 	"""Enumerates all files to store. Yields a generator.
 	Wildcards are accepted for paths and file names.
 	
-	files    absolute or relative path or 
-	         path relative to supplied folder and can contain wildcards
+	files    list of absolute or relative paths or 
+	         paths relative to supplied folder and can contain wildcards
 	folder:	 location to search for files when
 	         paths are relative in files parameter
 	"""
-	if not isinstance(files, (list, tuple)): # we need a list
-		files = [files]		# otherwise iterating over characters
-		
+	
 	folder = escape_glob(folder)
 
 	for file_name in files:
