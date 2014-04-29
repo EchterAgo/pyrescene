@@ -76,6 +76,12 @@ class MessageThread(Thread):
 			time.sleep(self.sleeptime) # in seconds
 		return
 	
+	def wait_for_output(self):
+		"""We've got response back from the rescene functions.
+		Wait until all those messages are printed before continuing."""
+		while len(o.events):
+			time.sleep(self.sleeptime)
+	
 mthread = MessageThread()
 
 def report_error(status, message):
@@ -375,7 +381,7 @@ def main(argv=None):
 					 "isn't found (e.g. no extras) "
 					 "this option implies --no-autocrc")
 	recon.add_option("-u", "--no-autocrc", 
-					 action="store_false", dest="no_auto_crc", default=True,
+					 action="store_true", dest="no_auto_crc", default=False,
 					 help="disable automatic CRC checking during reconstruction")
 	recon.add_option("-H", help="<oldname:newname list>: Specify alternate "
 					"names for extracted files.  ex: srr example.srr -h "
