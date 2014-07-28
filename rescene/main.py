@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright (c) 2008-2010 ReScene.com
-# Copyright (c) 2011-2012 pyReScene
+# Copyright (c) 2011-2014 pyReScene
 #
 # Permission is hereby granted, free of charge, to any person
 # obtaining a copy of this software and associated documentation
@@ -55,8 +55,9 @@ from rescene.rar import (BlockType, RarReader,
 	SrrStoredFileBlock, SrrRarFileBlock, SrrHeaderBlock, COMPR_STORING, 
 	RarPackedFileBlock, SrrOsoHashBlock)
 from rescene.rarstream import RarStream, FakeFile
-from rescene.utility import (SfvEntry, is_rar, parse_sfv_file, _DEBUG,
+from rescene.utility import (SfvEntry, is_rar, _DEBUG,
                              first_rars, next_archive, empty_folder)
+from rescene.utility import parse_sfv_file, parse_sfv_data
 from rescene.osohash import osohash_from
 from rescene.utility import basestring, fsunicode
 from rescene.utility import decodetext, encodeerrors
@@ -882,11 +883,10 @@ def info(srr_file):
 			# get the CRC32 hashes from the sfv file
 			# not stored anywhere -> retrieve from sfv or we do not have it
 			if block.file_name[-4:].lower() == ".sfv":
-				sfvfile = io.BytesIO()
 				with open(srr_file, "rb") as sfv:
 					sfv.seek(block.block_position + block.header_size)
-					sfvfile.write(sfv.read(block.file_size))
-				(entries, comments, errors) = parse_sfv_file(sfvfile)
+					sfvdata = sfv.read(block.file_size)
+				(entries, comments, errors) = parse_sfv_data(sfvdata)
 				sfv_entries.extend(entries)
 				sfv_comments.extend(comments)
 				# TODO: let user know that there is a bad SFV
@@ -918,7 +918,7 @@ def info(srr_file):
 					compression = True
 			# crc of the file is the crc stored in
 			# the last archive that has the file
-			f.crc32 = "%X" % block.file_crc
+			f.crc32 = "%08X" % block.file_crc
 			archived_files[block.file_name] = f
 			
 		# new-style Recovery Records
@@ -993,14 +993,14 @@ def info(srr_file):
 	sfv_entries[:] = [e for e in sfv_entries if not add_info_to_rar(e)]
 	
 	return {"appname": appname, 
-			"stored_files": stored_files, 
-			"rar_files": rar_files, 
-			"archived_files": archived_files, 
-			"recovery": recovery,
-			"sfv_entries": sfv_entries, 
-			"sfv_comments": sfv_comments,
-			"compression": compression,
-			"oso_hashes": oso_hashes}
+	        "stored_files": stored_files,
+	        "rar_files": rar_files,
+	        "archived_files": archived_files,
+	        "recovery": recovery,
+	        "sfv_entries": sfv_entries,
+	        "sfv_comments": sfv_comments,
+	        "compression": compression,
+	        "oso_hashes": oso_hashes}
 
 def content_hash(srr_file, algorithm='sha1'):
 	"""Returns a Sha1 hash for comparing SRR files.
@@ -1742,7 +1742,7 @@ def compressed_rar_file_factory(block, blocks, src,
 				else:
 					raise
 			return CompressedRarFile(block, blocks, src, 
-										followup, followup_src, solid=True)
+			                         followup, followup_src, solid=True)
 			
 		if block.flags & block.SOLID:
 			# get first file from archive
@@ -2506,8 +2506,8 @@ def custom_popen(cmd):
 	# run command
 	if _DEBUG: print(" ".join(cmd))
 	return subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, 
-							stdin=subprocess.PIPE, stderr=subprocess.STDOUT, 
-							creationflags=creationflags)	
+	                        stdin=subprocess.PIPE, stderr=subprocess.STDOUT, 
+	                        creationflags=creationflags)	
 	
 def copy_data(source_file, destination_file, offset_amount):
 	with open(source_file, 'rb') as source:
