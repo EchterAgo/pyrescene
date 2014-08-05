@@ -29,28 +29,28 @@ def read_nzb(nzb_file):
 	print("Reading %s." % os.path.basename(nzb_file))
 	def parse(pnzb_file):
 		try: # file on disk
-			return pynzb.nzb_parser.parse(open(pnzb_file).read())
+			with open(pnzb_file, "rb") as file:
+				return pynzb.nzb_parser.parse(file.read())
 		except: # an open file object
 			return pynzb.nzb_parser.parse(pnzb_file.read())
 
 	try:
 		return parse(nzb_file)
-	except KeyboardInterrupt:
-		raise
-	except:
+	except Exception:
 		print("Parsing the nzb file failed. Trying to fix invalid XML.")
 		# Problem with the ampersand.
 		# newsmangler doesn't properly escape the & in the NZB
 		# http://www.powergrep.com/manual/xmpxmlfixentities.html
 		XML_AMP_FIX = b"&(?!(?:[a-z]+|#[0-9]+|#x[0-9a-f]+);)"
 		fixed_nzb = io.BytesIO()
-		for line in open(nzb_file, "rb").readlines():
-			line = re.sub(XML_AMP_FIX, b"&amp;", line)
-			LATIN1_OUML = b"\xF6"
-			line = re.sub(b"&ouml;", LATIN1_OUML, line)
-			# invalid XML characters from NewsLeecher
-			line = re.sub(b"\00", b"", line)
-			fixed_nzb.write(line)
+		with open(nzb_file, "rb") as file:
+			for line in file.readlines():
+				line = re.sub(XML_AMP_FIX, b"&amp;", line)
+				LATIN1_OUML = b"\xF6"
+				line = re.sub(b"&ouml;", LATIN1_OUML, line)
+				# invalid XML characters from NewsLeecher
+				line = re.sub(b"\00", b"", line)
+				fixed_nzb.write(line)
 		# do not fail on empty NZB files
 		if fixed_nzb.tell() == 0:
 			print("Empty NZB file: %s" % os.path.basename(nzb_file))
