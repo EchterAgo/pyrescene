@@ -795,16 +795,26 @@ def generate_srr(reldir, working_dir, options, mthread):
 			if skip:
 				continue
 			
-			new_srrs = create_srr_for_subs(unrar, esfv, working_dir, reldir)
-			for s in new_srrs:
-				copied_files.append(s)
+			try:
+				new_srrs = create_srr_for_subs(
+					unrar, esfv, working_dir, reldir)
+				for s in new_srrs:
+					copied_files.append(s)
+			except ValueError as e:
+				# No RAR5 support yet
+				logging.warning("{0}: {1}".format(str(e), esfv))
 			
 		r = os.path.split(reldir)[1].lower()
 		if "subpack" in r or "subfix" in r:
 			for esfv in main_sfvs:
-				new_srrs = create_srr_for_subs(unrar, esfv, working_dir, reldir)
-				for s in new_srrs:
-					copied_files.append(s)
+				try:
+					new_srrs = create_srr_for_subs(
+						unrar, esfv, working_dir, reldir)
+					for s in new_srrs:
+						copied_files.append(s)
+				except ValueError as e:
+					# No RAR5 support yet
+					logging.warning("{0}: {1}".format(str(e), esfv))
 
 	# TODO: TXT files for m2ts/vob with crc and size?
 	# no, basic .srs file with a single track
@@ -901,6 +911,9 @@ def get_release_directories(path):
 			pass
 		
 	for dirpath, dirnames, filenames in os.walk(path):
+		# The directory list is in arbitrary order, but on Windows it seems 
+		# to be sorted alphabetical by default.
+		dirnames.sort() # force alphabetical order 
 		if _DEBUG:
 			print(dirpath)
 			print(dirnames)
@@ -1073,6 +1086,7 @@ def main(argv=None):
 		options.sample_verify = True
 		options.vobsub_srr = True
 	
+	# extra feature that just prints release names
 	if (options.list_releases or options.missing_nfos or 
 		options.missing_samples):
 		def print_release(release_dir):
@@ -1108,7 +1122,7 @@ def main(argv=None):
 	
 	if options.always_yes and options.always_no:
 		print("Is it 'always yes' (-y) or 'always no' (-n)?")
-		return 0
+		return 1 # failure
 
 	# check for existence output directory
 	options.output_dir = os.path.abspath(options.output_dir)
@@ -1117,7 +1131,7 @@ def main(argv=None):
 			os.makedirs(options.output_dir)
 		else:
 			print("No output directory created.")
-			return 0
+			return 1 # failure, although user can expect this
 			
 	# overwrite user input request function
 	def can_overwrite(file_path):
@@ -1151,20 +1165,30 @@ def main(argv=None):
 		options.temp_dir = None
 	working_dir = mkdtemp(".pyReScene", dir=options.temp_dir)
 	
+	# SRR for vobsubs only. Only one file at a time; last file will be used.
 	if options.vobsubs:
+		if len(indirs):
+			print("Warning: ignoring unnecessary parameters.")
+			print("Use -v or --vobsub-srr to include SRR files for vobsubs.")
 		unrar = locate_unrar()
 		sfv = os.path.abspath(options.vobsubs)
-		srr_list = create_srr_for_subs(unrar, sfv, working_dir,
-		                               os.path.dirname(sfv))	
-		for vobsub_srr in srr_list:
-			f = os.path.basename(vobsub_srr)
-			out = os.path.join(options.output_dir, f)
-			if os.path.isfile(out):
-				if can_overwrite(out):
+		try:
+			srr_list = create_srr_for_subs(unrar, sfv, working_dir,
+			                               os.path.dirname(sfv))	
+			for vobsub_srr in srr_list:
+				f = os.path.basename(vobsub_srr)
+				out = os.path.join(options.output_dir, f)
+				if os.path.isfile(out):
+					if can_overwrite(out):
+						shutil.copy(vobsub_srr, out)
+				else:
 					shutil.copy(vobsub_srr, out)
-			else:
-				shutil.copy(vobsub_srr, out)
-	
+			return 0
+		except ValueError as e:
+			# No RAR5 support yet
+			logging.warning("{0}: {1}".format(str(e), sfv))
+			return 1 # failure (no .srr created)
+
 	drive_letters = []
 	aborted = False
 	missing = [] # --always-no: existing SRRs are excluded
@@ -1223,10 +1247,13 @@ def main(argv=None):
 	# delete temporary working dir
 	try:
 		shutil.rmtree(working_dir)
-	except OSError:
+	except OSError as oserr:
 		print("Could not empty temporary working directory!")
 		print(working_dir)
 		print("This is a know problem for PyPy users. (long paths issue)")
+		# I've seen this error with CPython too. Something else wrong?
+		# The temp dir was actually removed though.
+		print("Actual error: {0}".format(str(oserr)))
 	
 	# see if we need to eject a disk drive
 	if options.eject and os.name == "nt" and not aborted:
