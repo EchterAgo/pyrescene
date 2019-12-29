@@ -1807,6 +1807,17 @@ class RarExecutable(object):
 		self.threads = b"mt<threads>" in stdout
 		return self.threads
 	
+	def min_thread_count(self):
+		"""
+		When the -mt parameter was introduced in 3.6b1 the range was 0--16.
+		In 4.20, this was changed to 1--32.
+		"""
+		if (int(self.major) < 4 or
+			int(self.major) == 4 and int(self.minor) < 20):
+			return 0
+		else:
+			return 1
+
 	def max_thread_count(self):
 		"""
 		Ignores whether or not this version can set threads!
@@ -1871,7 +1882,7 @@ class RarArguments(object):
 		# 4.20: Now the allowed <threads> value for -mt<threads> switch is
 		# 1 - 32, not 0 - 16 as before.
 		mtcount = rarbin.max_thread_count()	
-		mt_min = 1
+		mt_min = rarbin.min_thread_count()
 		mt_max = mtcount
 		if RarArguments.mt_settings.mt_min > 0:
 			mt_min = RarArguments.mt_settings.mt_min
