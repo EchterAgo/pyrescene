@@ -1796,7 +1796,7 @@ class RarExecutable(object):
 	
 	def full(self):
 		if self.args:
-			return [self.path()] + self.args.arglist() 
+			return [self.path()] + self.args.arglist(self)
 		return [self.path()]
 	
 	def supports_setting_threads(self):
@@ -1923,7 +1923,7 @@ class RarArguments(object):
 			return 1 # so it won't crash here; see t-670586
 		return int(self.threads[3:])
 	
-	def arglist(self):
+	def arglist(self, exe):
 		args = list(filter(lambda x: x != '', 
 			["a", self.compr_level, self.dict_size, 
 			self.solid, self.solid_namesort, self.threads,
@@ -1931,6 +1931,7 @@ class RarArguments(object):
 			"-o+", # Overwrite all
 			"-ep", # Exclude paths from names.
 			"-idcd", # Disable messages: copyright string, "Done" string
+			"-ma4" if int(exe.major) >= 5 else "",
 			self.split,
 			self.rar_archive]))
 		if len(self.store_all_files):
@@ -2298,7 +2299,7 @@ class CompressedRarFile(io.IOBase):
 				if amount == size_full:
 					break
 				
-				proc = custom_popen([rarexe.path()] + args.arglist())
+				proc = custom_popen([rarexe.path()] + args.arglist(rarexe))
 				(stdout, _) = proc.communicate()
 				
 				if proc.returncode != 0:
@@ -2331,7 +2332,7 @@ class CompressedRarFile(io.IOBase):
 #		args.threads = thread_count
 			
 		def try_rar_executable(rar, args, old=False):
-			compress = custom_popen([rar.path()] + args.arglist())
+			compress = custom_popen([rar.path()] + args.arglist(rar))
 			stdout, _ = compress.communicate()
 			
 			if compress.returncode != 0:
